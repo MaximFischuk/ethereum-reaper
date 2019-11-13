@@ -1,0 +1,8 @@
+log:
+  level: Info
+ethereum:
+  url: "https://mainnet.infura.io/v3/a6b0643f19d54ff685750d5ccd223d31"
+  start_block: Latest
+  topics:
+    - name: Transfer
+      topic: 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef
