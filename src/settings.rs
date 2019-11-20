@@ -1,8 +1,13 @@
-use std::env;
 use config::{ConfigError, Config, File, Environment};
 use log::LevelFilter;
 use serde::Deserialize;
 use web3::types::{BlockNumber, U64};
+
+#[derive(Debug, Deserialize)]
+pub struct Hash32(#[serde(with = "hex_serde")] pub [u8; 32]);
+
+#[derive(Debug, Deserialize)]
+pub struct Address(#[serde(with = "hex_serde")] pub [u8; 20]);
 
 #[derive(Deserialize)]
 #[serde(remote = "LevelFilter")]
@@ -25,8 +30,8 @@ pub struct Log {
 #[derive(Debug, Deserialize)]
 pub struct EthLog {
     pub name: String,
-    pub topic: String,
-    pub contract: String
+    pub topic: Hash32,
+    pub contracts: Vec<Address>
 }
 
 #[derive(Debug, Deserialize)]
@@ -34,6 +39,7 @@ pub struct Ethereum {
     pub url: String,
     #[serde(with = "BlockNumberDef")]
     pub start_block: BlockNumber,
+    pub batch_size: u64,
     pub topics: Vec<EthLog>
 }
 
@@ -51,11 +57,15 @@ impl Settings {
 
         config.try_into()
     }
+}
 
-    pub fn default() -> Self {
+impl Default for Settings {
+
+    fn default() -> Self {
         Settings {
             log: Log { level: LevelFilter::Info },
-            ethereum: Ethereum { url: "http://localhost:8545".to_owned(), start_block: BlockNumber::Latest, topics: vec![] }
+            ethereum: Ethereum { url: "http://localhost:8545".to_owned(), start_block: BlockNumber::Latest, topics: vec![], batch_size: 10 }
         }
     }
+
 }
