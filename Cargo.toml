@@ -4,10 +4,14 @@ version = "0.0.1"
 authors = ["Maxim Fischuk"]
 edition = "2018"
 
+[[bin]]
+name = "ethereim-poller"
+path = "./src/main.rs"
+
 [dependencies]
 log = "0.4.8"
 env_logger = "0.7.1"
-tokio-core = "0.1.17"
+tokio = "0.2.0-alpha.6"
 web3 = { git = "https://github.com/tomusdrw/rust-web3" }
 clap = "2.33.0"
 config = "0.9.3"
@@ -19,3 +23,6 @@ r2d2 = "0.8.6"
 r2d2_pulsar = "0.1.3"
 futures = "0.3.1"
 pulsar = "0.2.0"
+signal-hook = "0.1.11"
+ethbloom = "0.6.4"
+hex-serde = "0.1.0"
