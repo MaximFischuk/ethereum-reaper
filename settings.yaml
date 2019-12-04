@@ -2,10 +2,15 @@ log:
   level: Info
 ethereum:
   url: "https://mainnet.infura.io/v3/a6b0643f19d54ff685750d5ccd223d31"
-  start_block: Latest
-  batch_size: 100
-  topics:
-    - name: Transfer(USDT)
+  start_block:
+    Number: 7000000
+  batch_size: 5000
+  logs:
+    - name: Transfer(PRO)
       topic: ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef
       contracts:
-        - 'dac17f958d2ee523a2206206994597c13d831ec7'
+        - '226bb599a12c826476e3a771454697ea52e9e220'
+message:
+  topics:
+    block:
+      -
