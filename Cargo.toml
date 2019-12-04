@@ -10,7 +10,8 @@ path = "./src/main.rs"
 
 [dependencies]
 log = "0.4.8"
-env_logger = "0.7.1"
+fern = "0.5.9"
+chrono = "0.4.10"
 tokio = "0.2.0-alpha.6"
 web3 = { git = "https://github.com/tomusdrw/rust-web3" }
 clap = "2.33.0"
