@@ -1,6 +1,6 @@
 use config::{ConfigError, Config, File, Environment};
 use log::LevelFilter;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use web3::types::{BlockNumber, U64};
 
 #[derive(Debug, Deserialize)]
@@ -18,7 +18,7 @@ pub enum LevelFilterDef {
 #[derive(Deserialize)]
 #[serde(remote = "BlockNumber")]
 pub enum BlockNumberDef {
-    Latest, Earliest, Pending, Number(U64),
+    Latest, Earliest, Pending, #[serde(with = "crate::configuration::deserialize")] Number(U64),
 }
 
 #[derive(Debug, Deserialize)]
@@ -34,13 +34,26 @@ pub struct EthLog {
     pub contracts: Vec<Address>
 }
 
+pub struct EthBlock {
+
+}
+
+pub struct EthTransaction {
+    
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Ethereum {
     pub url: String,
     #[serde(with = "BlockNumberDef")]
     pub start_block: BlockNumber,
     pub batch_size: u64,
-    pub topics: Vec<EthLog>
+    pub logs: Vec<EthLog>
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MessageBroker {
+
 }
 
 #[derive(Debug, Deserialize)]
@@ -64,7 +77,7 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             log: Log { level: LevelFilter::Info },
-            ethereum: Ethereum { url: "http://localhost:8545".to_owned(), start_block: BlockNumber::Latest, topics: vec![], batch_size: 10 }
+            ethereum: Ethereum { url: "http://localhost:8545".to_owned(), start_block: BlockNumber::Latest, logs: vec![], batch_size: 10 }
         }
     }
 
