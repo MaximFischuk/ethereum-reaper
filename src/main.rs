@@ -42,6 +42,13 @@ fn main() {
              .possible_values(&["Off", "Error", "Warn", "Info", "Debug", "Trace"])
              .required(false)
              .help(config_params::LOG_DESC))
+        .arg(Arg::with_name(config_params::LOG_FILE)
+            .short(config_params::LOG_FILE_SHORT)
+            .long(config_params::LOG_FILE)
+            .value_name(config_params::LOG_FILE_ENV)
+            .takes_value(true)
+            .required(false)
+            .help(config_params::LOG_FILE_DESC))
         .arg(Arg::with_name(config_params::NODE_URL)
              .short(config_params::NODE_URL_SHORT)
              .long(config_params::NODE_URL)
@@ -76,7 +83,7 @@ fn cli(matches: ArgMatches) {
     }
     let log_level = matches.value_of(config_params::LOG)
         .map(|v| LevelFilter::from_str(v).unwrap()).unwrap_or(settings.log.level);
-    fern::Dispatch::new()
+    let mut dispatcher = fern::Dispatch::new()
         // Perform allocation-free log formatting
         .format(|out, message, record| {
             out.finish(format_args!(
@@ -88,9 +95,13 @@ fn cli(matches: ArgMatches) {
             ))
         })
         .level(log_level)
-        .chain(std::io::stdout())
-        .chain(fern::log_file("output.log").unwrap())
-        .apply().unwrap();
+        .chain(std::io::stdout());
+
+    match matches.value_of(config_params::LOG_FILE) {
+        Some(log_file) => dispatcher = dispatcher.chain(fern::log_file(log_file).unwrap()),
+        _ => { /* ignored */ }
+    }
+    dispatcher.apply().unwrap();
     debug!("Loaded configurations {:?}", settings);
     info!("Logging level {} enabled", settings.log.level);
 

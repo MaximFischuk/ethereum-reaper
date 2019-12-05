@@ -15,6 +15,11 @@ pub mod config_params {
     pub const LOG_ENV: &'static str = "LOG_LEVEL";
     pub const LOG_DESC: &'static str = "Sets a logging level";
 
+    pub const LOG_FILE: &'static str = "log_output_file";
+    pub const LOG_FILE_SHORT: &'static str = "O";
+    pub const LOG_FILE_ENV: &'static str = "LOG_OUTPUT_FILE";
+    pub const LOG_FILE_DESC: &'static str = "FIle to which application will write logs";
+
     pub const NODE_URL: &'static str = "node_url";
     pub const NODE_URL_SHORT: &'static str = "u";
     pub const NODE_URL_ENV: &'static str = "NODE_URL";
