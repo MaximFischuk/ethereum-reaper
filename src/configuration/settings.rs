@@ -1,6 +1,6 @@
 use config::{ConfigError, Config, File, Environment};
 use log::LevelFilter;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize};
 use web3::types::{BlockNumber, U64};
 
 #[derive(Debug, Deserialize)]
