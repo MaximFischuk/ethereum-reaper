@@ -20,7 +20,8 @@ use log::LevelFilter;
 use std::str::FromStr;
 
 use configuration::settings::{ Settings };
-use configuration::constants::{ cargo_env, config_params };
+use configuration::constants::{ cargo_env, config_params, common };
+use futures::executor::block_on;
 
 fn main() {
     let matches = App::new(cargo_env::CARGO_PKG_NAME)
@@ -120,11 +121,19 @@ fn cli(matches: ArgMatches) {
         }
     });
 
-    ethereum::client::run_main_loop(
-        settings.ethereum.url.as_str(),
+    info!("Creating connection to {}", settings.ethereum.url.as_str());
+    let (_eloop, transport) = web3::transports::Http::with_max_parallel(settings.ethereum.url.as_str(), common::MAX_PARALLEL_REQUESTS).unwrap();
+    let mut listener = ethereum::client::LogListener::new(
+        &transport,
         &settings.ethereum.logs,
         settings.ethereum.start_block,
-        settings.ethereum.batch_size,
-        tx
+        settings.ethereum.batch_size
     );
+    let loops = move || async {
+        let event_listener = listener.run(tx);
+
+        futures::join!(event_listener);
+        listener
+    };
+    block_on(loops());
 }

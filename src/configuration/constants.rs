@@ -25,3 +25,7 @@ pub mod config_params {
     pub const NODE_URL_ENV: &'static str = "NODE_URL";
     pub const NODE_URL_DESC: &'static str = "Url to opened ethereum web3 protocol endpoint";
 }
+
+pub mod common {
+    pub const MAX_PARALLEL_REQUESTS: usize = 64;
+}
