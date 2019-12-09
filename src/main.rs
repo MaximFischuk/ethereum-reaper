@@ -5,10 +5,12 @@ extern crate tokio;
 extern crate ethbloom;
 extern crate fern;
 extern crate chrono;
+extern crate rdkafka;
 #[macro_use] extern crate log;
 
 mod configuration;
 mod ethereum;
+mod messaging;
 
 use clap::{ App, Arg, ArgMatches };
 use std::{thread};
@@ -22,6 +24,9 @@ use std::str::FromStr;
 use configuration::settings::{ Settings };
 use configuration::constants::{ cargo_env, config_params, common };
 use futures::executor::block_on;
+use rdkafka::producer::BaseProducer;
+use messaging::SendLog;
+use std::time::Duration;
 
 fn main() {
     let matches = App::new(cargo_env::CARGO_PKG_NAME)
@@ -108,13 +113,17 @@ fn cli(matches: ArgMatches) {
 
     let (tx, mut rx) = mpsc::channel(1_024);
 
+    let kafka = settings.kafka;
     thread::spawn(move || {
+        let mq_producer = BaseProducer::from(kafka);
         loop {
             match rx.try_next() {
-                Ok(opt) => {
-                    if let Some(message) = opt {
-                        info!("Received message {:?}", message);
-                    }
+                Ok(Some(message)) => {
+                    info!("Received message {:?}", message);
+                    match mq_producer.send_log(&message) {
+                        Ok(_) => trace!("Successful sent message"),
+                        Err(error) => error!("Failed to send message {}", error)
+                    };
                 },
                 _ => {/* ignored */}
             };
