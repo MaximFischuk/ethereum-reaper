@@ -2,6 +2,7 @@ use config::{ConfigError, Config, File, Environment};
 use log::LevelFilter;
 use serde::{Deserialize};
 use web3::types::{BlockNumber, U64};
+use std::collections::HashMap;
 
 #[derive(Debug, Deserialize)]
 pub struct Hash32(#[serde(with = "hex_serde")] pub [u8; 32]);
@@ -53,13 +54,15 @@ pub struct Ethereum {
 
 #[derive(Debug, Deserialize)]
 pub struct MessageBroker {
-
+    pub brokers: String,
+    pub properties: HashMap<String, String>
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Settings {
     pub log: Log,
-    pub ethereum: Ethereum
+    pub ethereum: Ethereum,
+    pub kafka: MessageBroker
 }
 
 impl Settings {
@@ -77,7 +80,8 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             log: Log { level: LevelFilter::Info },
-            ethereum: Ethereum { url: "http://localhost:8545".to_owned(), start_block: BlockNumber::Latest, logs: vec![], batch_size: 10 }
+            ethereum: Ethereum { url: "http://localhost:8545".to_owned(), start_block: BlockNumber::Latest, logs: vec![], batch_size: 10 },
+            kafka: MessageBroker { brokers: "localhost:9092".to_owned(), properties: HashMap::default() }
         }
     }
 

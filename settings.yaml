@@ -10,7 +10,9 @@ ethereum:
       topic: ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef
       contracts:
         - '226bb599a12c826476e3a771454697ea52e9e220'
-message:
-  topics:
-    block:
-      -
+kafka:
+  brokers: 'el.frontnode.vareger.com:9095'
+  properties:
+    'security.protocol': SASL_PLAINTEXT
+    'sasl.mechanism': SCRAM-SHA-512
+    'sasl.jaas.config': 'org.apache.kafka.common.security.scram.ScramLoginModule required username="simple-games-stage" password="KRh43E7XzqNKpRN";'
