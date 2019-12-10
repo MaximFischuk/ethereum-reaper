@@ -15,4 +15,5 @@ kafka:
   properties:
     'security.protocol': SASL_PLAINTEXT
     'sasl.mechanism': SCRAM-SHA-512
-    'sasl.jaas.config': 'org.apache.kafka.common.security.scram.ScramLoginModule required username="simple-games-stage" password="KRh43E7XzqNKpRN";'
+    'sasl.username': simple-games-stage
+    'sasl.password': KRh43E7XzqNKpRN
