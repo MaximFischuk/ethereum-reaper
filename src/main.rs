@@ -6,6 +6,7 @@ extern crate ethbloom;
 extern crate fern;
 extern crate chrono;
 extern crate rdkafka;
+extern crate structopt;
 #[macro_use] extern crate log;
 
 mod configuration;
@@ -22,46 +23,17 @@ use log::LevelFilter;
 use std::str::FromStr;
 
 use configuration::settings::{ Settings };
-use configuration::constants::{ cargo_env, config_params, common };
+use configuration::constants::{ cargo_env, common };
 use futures::executor::block_on;
 use rdkafka::producer::BaseProducer;
 use messaging::SendLog;
+use configuration::command_line::{ Opt, LogLevel };
 use std::time::Duration;
+use structopt::StructOpt;
+use std::path::PathBuf;
 
 fn main() {
-    let matches = App::new(cargo_env::CARGO_PKG_NAME)
-        .author(cargo_env::CARGO_PKG_AUTHORS)
-        .version(cargo_env::CARGO_PKG_VERSION)
-        .arg(Arg::with_name(config_params::CONFIG)
-             .short(config_params::CONFIG_SHORT)
-             .long(config_params::CONFIG)
-             .env(config_params::CONFIG_ENV)
-             .value_name("FILE")
-             .takes_value(true)
-             .help(config_params::CONFIG_DESC))
-        .arg(Arg::with_name(config_params::LOG)
-             .short(config_params::LOG_SHORT)
-             .long(config_params::LOG)
-             .value_name(config_params::LOG_ENV)
-             .takes_value(true)
-             .default_value("Info")
-             .possible_values(&["Off", "Error", "Warn", "Info", "Debug", "Trace"])
-             .required(false)
-             .help(config_params::LOG_DESC))
-        .arg(Arg::with_name(config_params::LOG_FILE)
-            .short(config_params::LOG_FILE_SHORT)
-            .long(config_params::LOG_FILE)
-            .value_name(config_params::LOG_FILE_ENV)
-            .takes_value(true)
-            .required(false)
-            .help(config_params::LOG_FILE_DESC))
-        .arg(Arg::with_name(config_params::NODE_URL)
-             .short(config_params::NODE_URL_SHORT)
-             .long(config_params::NODE_URL)
-             .value_name(config_params::NODE_URL_ENV)
-             .takes_value(true)
-             .help(config_params::NODE_URL_DESC))
-        .get_matches();
+    let options = Opt::from_args();
     let signals = Signals::new(&[SIGINT]).unwrap();
 
     thread::spawn(move || {
@@ -70,25 +42,10 @@ fn main() {
             exit(0);
         }
     });
-    cli(matches);
+    cli(options);
 }
 
-fn cli(matches: ArgMatches) {
-    let settings: Settings;
-    match matches.value_of(config_params::CONFIG) {
-        Some(v) => {
-            match Settings::new(v.to_string()) {
-                Ok(config) => settings = config,
-                Err(e) => panic!("Error: {:?}", e)
-            }
-        }
-        None => {
-            warn!("Config not set, using default");
-            settings = Settings::default();
-        }
-    }
-    let log_level = matches.value_of(config_params::LOG)
-        .map(|v| LevelFilter::from_str(v).unwrap()).unwrap_or(settings.log.level);
+fn init_logging(level: LevelFilter, output: &Option<PathBuf>) {
     let mut dispatcher = fern::Dispatch::new()
         // Perform allocation-free log formatting
         .format(|out, message, record| {
@@ -100,16 +57,36 @@ fn cli(matches: ArgMatches) {
                 message
             ))
         })
-        .level(log_level)
+        .level(level)
         .chain(std::io::stdout());
 
-    match matches.value_of(config_params::LOG_FILE) {
+    match output {
         Some(log_file) => dispatcher = dispatcher.chain(fern::log_file(log_file).unwrap()),
         _ => { /* ignored */ }
     }
     dispatcher.apply().unwrap();
+    info!("Logging level {} enabled", level);
+}
+
+fn cli(options: Opt) {
+    let settings: Settings;
+    match options.config {
+        Some(v) => {
+            match Settings::new(v) {
+                Ok(config) => settings = config,
+                Err(e) => panic!("Error: {:?}", e)
+            }
+        }
+        None => {
+            warn!("Config not set, using default");
+            settings = Settings::default();
+        }
+    }
+    let log_level = options.logging
+        .map(LogLevel::into)
+        .unwrap_or(settings.log.level);
+    init_logging(log_level, &options.log_output_file);
     debug!("Loaded configurations {:?}", settings);
-    info!("Logging level {} enabled", settings.log.level);
 
     let (tx, mut rx) = mpsc::channel(1_024);
 

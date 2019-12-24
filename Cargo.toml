@@ -15,6 +15,7 @@ chrono = "0.4.10"
 tokio = "0.2.0-alpha.6"
 web3 = { git = "https://github.com/tomusdrw/rust-web3" }
 clap = "2.33.0"
+structopt = "0.3.5"
 config = "0.9.3"
 serde_derive = "1.0.102"
 serde = "1.0.102"
