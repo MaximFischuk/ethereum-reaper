@@ -1,3 +1,14 @@
+// TODO: Enable on release
+//#![forbid(unsafe_code)]
+//#![deny(non_upper_case_globals)]
+//#![deny(non_camel_case_types)]
+//#![deny(non_snake_case)]
+//#![deny(unused_mut)]
+//#![deny(dead_code)]
+//#![deny(unused_imports)]
+//#![deny(missing_docs)]
+//#![forbid(unsafe_code)]
+
 extern crate web3;
 extern crate clap;
 extern crate futures;
@@ -13,22 +24,19 @@ mod configuration;
 mod ethereum;
 mod messaging;
 
-use clap::{ App, Arg, ArgMatches };
 use std::{thread};
 use signal_hook::{iterator::Signals, SIGINT};
 use futures::channel::mpsc;
 
 use std::process::exit;
 use log::LevelFilter;
-use std::str::FromStr;
 
 use configuration::settings::{ Settings };
-use configuration::constants::{ cargo_env, common };
+use configuration::constants::{ common };
 use futures::executor::block_on;
 use rdkafka::producer::BaseProducer;
 use messaging::SendLog;
 use configuration::command_line::{ Opt, LogLevel };
-use std::time::Duration;
 use structopt::StructOpt;
 use std::path::PathBuf;
 

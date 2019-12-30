@@ -74,7 +74,7 @@ impl <'a> LogListener <'a> {
                 _ => 0
             };
             if poll_size == 0 {
-                info!("Has no new blocks, waiting...");
+                debug!("Has no new blocks, waiting...");
                 continue;
             }
             info!("Preparing blocks {}..{}({}) for batch", current, current + poll_size, poll_size);
@@ -93,10 +93,6 @@ impl <'a> LogListener <'a> {
 
             match requests.wait() {
                 Ok(items) => {
-                    if items.len() == 0 {
-                        continue;
-                    }
-                    info!("Loaded {} logs", items.len());
                     for res in items {
                         match res {
                             Ok(value) => {
@@ -108,10 +104,20 @@ impl <'a> LogListener <'a> {
                                     }
                                 };
                                 for log in logs {
-                                    match tchannel.start_send(log) {
-                                        Ok(_) => trace!("Broadcast received event"),
-                                        Err(e) => error!("Error broadcasting message {}", e)
-                                    };
+                                    let mut success = true;
+                                    loop {
+                                        match tchannel.start_send(log.clone()) {
+                                            Ok(_) => trace!("Broadcast received event"),
+                                            Err(e) if e.is_full() => {
+                                                thread::sleep(Duration::from_millis(50));
+                                                success = false;
+                                            },
+                                            Err(e) => error!("Error broadcasting message {}", e)
+                                        };
+                                        if success {
+                                            break;
+                                        }
+                                    }
                                 }
                             },
                             Err(e) => error!("Error log {:?}", e)
@@ -147,7 +153,7 @@ impl <'a> Stream for LogListener <'a> {
             _ => 0
         };
         if poll_size == 0 {
-            info!("Has no new blocks, waiting...");
+            debug!("Has no new blocks, waiting...");
             return Poll::Pending;
         }
         info!("Preparing blocks {}..{}({}) for batch", current, current + poll_size, poll_size);
