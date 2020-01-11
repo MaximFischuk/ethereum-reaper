@@ -39,6 +39,8 @@ use messaging::SendLog;
 use configuration::command_line::{ Opt, LogLevel };
 use structopt::StructOpt;
 use std::path::PathBuf;
+use futures::future;
+use futures::stream::StreamExt;
 
 fn main() {
     let options = Opt::from_args();
@@ -96,25 +98,6 @@ fn cli(options: Opt) {
     init_logging(log_level, &options.log_output_file);
     debug!("Loaded configurations {:?}", settings);
 
-    let (tx, mut rx) = mpsc::channel(1_024);
-
-    let kafka = settings.kafka;
-    thread::spawn(move || {
-        let mq_producer = BaseProducer::from(kafka);
-        loop {
-            match rx.try_next() {
-                Ok(Some(message)) => {
-                    info!("Received message {:?}", message);
-                    match mq_producer.send_log(&message) {
-                        Ok(_) => trace!("Successful sent message"),
-                        Err(error) => error!("Failed to send message {}", error)
-                    };
-                },
-                _ => {/* ignored */}
-            };
-        }
-    });
-
     info!("Creating connection to {}", settings.ethereum.url.as_str());
     let (_eloop, transport) = web3::transports::Http::with_max_parallel(settings.ethereum.url.as_str(), common::MAX_PARALLEL_REQUESTS).unwrap();
     let mut listener = ethereum::client::LogListener::new(
@@ -123,11 +106,17 @@ fn cli(options: Opt) {
         settings.ethereum.start_block,
         settings.ethereum.batch_size
     );
-    let loops = move || async {
-        let event_listener = listener.run(tx);
-
-        futures::join!(event_listener);
-        listener
-    };
-    block_on(loops());
+    let kafka = settings.kafka;
+    let mq_producer = BaseProducer::from(kafka);
+    let fut = listener.stream().for_each(|logs| {
+        for message in logs {
+            info!("Received message {:?}", message);
+            match mq_producer.send_log(&message) {
+                Ok(_) => trace!("Successful sent message"),
+                Err(error) => error!("Failed to send message {}", error)
+            };
+        }
+        future::ready(())
+    });
+    block_on(fut);
 }

@@ -24,6 +24,12 @@ pub struct LogListener <'a> {
     current: u64
 }
 
+pub struct LogStream <'a> {
+    listener: &'a LogListener<'a>,
+    batch_size: u64,
+    current: u64
+}
+
 impl <'a> LogListener <'a> {
     pub fn new (transport: &'a Http, logs: &'a Vec<EthLog>, start_block: BlockNumber, batch_size: u64) -> Self {
         let batch = web3::transports::Batch::new(transport);
@@ -40,7 +46,7 @@ impl <'a> LogListener <'a> {
         }
     }
 
-    pub fn current_block(&self) -> u64 {
+    pub fn current_block(&'a self) -> u64 {
         self.current
     }
 
@@ -54,79 +60,90 @@ impl <'a> LogListener <'a> {
         };
     }
 
-    pub async fn run(self: &mut Self, mut tchannel: mpsc::Sender<Log>) {
-        loop {
-            if self.current == BLOCK_UNINITIALIZED {
-                self.init_block_number();
-            }
-            let head_block = match self.web3.eth().block_number().wait() {
-                Ok(number) => number.0[0],
+    pub fn stream(&self) -> LogStream {
+        LogStream {
+            listener: &self,
+            batch_size: self.batch_size,
+            current: BLOCK_UNINITIALIZED
+        }
+    }
+}
+
+impl <'a> Stream for LogStream <'a> {
+    type Item = Vec<Log>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let mut this = self.get_mut();
+        if this.current == BLOCK_UNINITIALIZED {
+            this.current = match this.listener.web3.eth().block(BlockId::Number(this.listener.start_block)).wait() {
+                Ok(block) => block.map(move |b| b.number.unwrap_or(U64([0]))).unwrap().0[0],
                 Err(e) => {
-                    error!("Error while getting head block number {:?}", e);
-                    return;
+                    error!("Error while getting start block number {:?}", e);
+                    return Poll::Ready(None);
                 }
-            };
-            let current = self.current;
-            let batch_size = self.batch_size;
-            let poll_size: u64 = match head_block {
-                head if head > current && head - current > batch_size => batch_size,
-                head if head > current => head - current,
-                _ => 0
-            };
-            if poll_size == 0 {
-                debug!("Has no new blocks, waiting...");
-                continue;
-            }
-            info!("Preparing blocks {}..{}({}) for batch", current, current + poll_size, poll_size);
-            for filter in self.logs {
-                let current = FilterBuilder::default()
-                    .from_block(BlockNumber::Number(U64([current])))
-                    .to_block(BlockNumber::Number(U64([current + poll_size])))
-                    .address(filter.contracts.iter().map(|a| H160(a.0)).collect())
-                    .topics(Some(vec!(H256(filter.topic.0))), None, None, None)
-                    .build();
-                self.batch.eth().logs(current);
-            }
-            let requests = self.batch.transport().submit_batch();
-
-            self.current = current + poll_size;
-
-            match requests.wait() {
-                Ok(items) => {
-                    for res in items {
-                        match res {
-                            Ok(value) => {
-                                let logs: Vec<Log> = match serde_json::from_value(value) {
-                                    Ok(b) => b,
-                                    Err(e) => {
-                                        error!("Cannot to be serialized {}", e);
-                                        continue
-                                    }
-                                };
-                                for log in logs {
-                                    let mut success = true;
-                                    loop {
-                                        match tchannel.start_send(log.clone()) {
-                                            Ok(_) => trace!("Broadcast received event"),
-                                            Err(e) if e.is_full() => {
-                                                thread::sleep(Duration::from_millis(50));
-                                                success = false;
-                                            },
-                                            Err(e) => error!("Error broadcasting message {}", e)
-                                        };
-                                        if success {
-                                            break;
-                                        }
-                                    }
-                                }
-                            },
-                            Err(e) => error!("Error log {:?}", e)
-                        }
-                    }
-                },
-                Err(e) => error!("Error result value {:?}", e)
             }
         }
+        let head_block = match this.listener.web3.eth().block_number().wait() {
+            Ok(number) => number.0[0],
+            Err(e) => {
+                error!("Error while getting head block number {:?}", e);
+                return Poll::Ready(None);
+            }
+        };
+        let current = this.current;
+        let batch_size = this.batch_size;
+        let poll_size: u64 = match head_block {
+            head if head > current && head - current > batch_size => batch_size,
+            head if head > current => head - current,
+            _ => 0
+        };
+        if poll_size == 0 {
+            debug!("Has no new blocks, waiting...");
+            return Poll::Pending;
+        }
+        info!("Preparing blocks {}..{}({}) for batch", current, current + poll_size, poll_size);
+        for filter in this.listener.logs {
+            let current = FilterBuilder::default()
+                .from_block(BlockNumber::Number(U64([current])))
+                .to_block(BlockNumber::Number(U64([current + poll_size])))
+                .address(filter.contracts.iter().map(|a| H160(a.0)).collect())
+                .topics(Some(vec!(H256(filter.topic.0))), None, None, None)
+                .build();
+            this.listener.batch.eth().logs(current);
+        }
+        let requests = this.listener.batch.transport().submit_batch();
+
+        this.current = current + poll_size;
+
+        match requests.wait() {
+            Ok(items) => {
+                let logs: Vec<Log> = items.iter()
+                    .filter(|&result| {
+                        match result {
+                            Ok(_) => true,
+                            Err(e) => {
+                                error!("Error log {:?}", e);
+                                false
+                            }
+                        }
+                    })
+                    .map(|value| {
+                        let logs: Vec<Log> = match serde_json::from_value(value.as_ref().unwrap().clone()) {
+                            Ok(b) => b,
+                            Err(e) => {
+                                error!("Cannot to be serialized {}", e);
+                                vec![]
+                            }
+                        };
+                        logs
+                    })
+                    .flat_map(|logs|logs)
+                    .collect();
+                return Poll::Ready(Some(logs));
+            },
+            Err(e) => error!("Error result value {:?}", e)
+        }
+        Poll::Pending
     }
 }
 
