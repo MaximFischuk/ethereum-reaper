@@ -23,6 +23,7 @@ extern crate structopt;
 mod configuration;
 mod ethereum;
 mod messaging;
+mod coordination;
 
 use std::{thread};
 use signal_hook::{iterator::Signals, SIGINT};
