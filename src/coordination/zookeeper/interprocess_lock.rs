@@ -60,13 +60,20 @@ impl InterProcessMutex {
                         _ => {/* ignored */}
                     }
                 };
-                self.zk.exists_w(format!("{}/{}", self.path, children[0]).as_str(), watcher);
-                let mut done = match done_lock.lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => poisoned.into_inner(),
+                let stats = self.zk.exists_w(format!("{}/{}", self.path, children[0]).as_str(), watcher);
+                match stats {
+                    Ok(None) => continue,
+                    Err(e) => return Err(e),
+                    _ => {/* ignored */}
                 };
-                while !*done {
-                    if now.elapsed().gt(&timeout) {
+                loop {
+                    let done = match done_lock.lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    if *done {
+                        break;
+                    } else if now.elapsed().gt(&timeout) {
                         return Err(ZkError::OperationTimeout);
                     }
                 }
@@ -97,14 +104,12 @@ mod tests {
     use crate::coordination::zookeeper::LoggingWatcher;
     use crate::coordination::zookeeper::interprocess_lock::InterProcessMutex;
     use std::sync::Arc;
-    use futures::future::join3;
     use std::thread;
-    use futures::executor::block_on;
 
     #[test]
     fn test_aquire() {
         let zk = Arc::new(ZooKeeper::connect("localhost:2181", Duration::from_millis(50), LoggingWatcher).unwrap());
-        let mut locker = InterProcessMutex::new(zk.clone(), "/reaper/tests/interprocess_lock").unwrap();
+        let locker = InterProcessMutex::new(zk.clone(), "/reaper/tests/interprocess_lock").unwrap();
         let result = locker.acquire(Duration::from_millis(500));
         assert!(result.is_ok());
         locker.release();
@@ -113,30 +118,33 @@ mod tests {
     #[test]
     fn test_aquire_3_locks() {
         let zk = Arc::new(ZooKeeper::connect("localhost:2181", Duration::from_millis(50), LoggingWatcher).unwrap());
-        let mut locker1 = InterProcessMutex::new(zk.clone(), "/reaper/tests/interprocess_lock").unwrap();
-        let mut locker2 = InterProcessMutex::new(zk.clone(), "/reaper/tests/interprocess_lock").unwrap();
-        let mut locker3 = InterProcessMutex::new(zk.clone(), "/reaper/tests/interprocess_lock").unwrap();
+        let locker1 = InterProcessMutex::new(zk.clone(), "/reaper/tests/interprocess_lock").unwrap();
+        let locker2 = InterProcessMutex::new(zk.clone(), "/reaper/tests/interprocess_lock").unwrap();
+        let locker3 = InterProcessMutex::new(zk.clone(), "/reaper/tests/interprocess_lock").unwrap();
 
-        let t1 = async {
+        let t1 = thread::spawn(move || {
             let result = locker1.acquire(Duration::from_millis(100));
             thread::sleep(Duration::from_secs(1));
             let result2 = locker1.release();
 
             result.is_ok() && result2.is_ok()
-        };
-        let t2 = async {
+        });
+        let t2 = thread::spawn(move || {
             let result = locker2.acquire(Duration::from_secs(2));
             thread::sleep(Duration::from_secs(1));
             let result2 = locker2.release();
 
             result.is_ok() && result2.is_ok()
-        };
-        let t3 = async {
+        });
+        let t3 = thread::spawn(move || {
             let result = locker3.acquire(Duration::from_secs(3));
             let result2 = locker3.release();
 
             result.is_ok() && result2.is_ok()
-        };
-        assert_eq!(block_on(join3(t1, t2, t3)), (true, true, true));
+        });
+        let r1 = t1.join().unwrap();
+        let r2 = t2.join().unwrap();
+        let r3 = t3.join().unwrap();
+        assert_eq!((r1, r2, r3), (true, true, true));
     }
 }
