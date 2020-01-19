@@ -1,5 +1,5 @@
 use std::sync::{ Arc, Mutex };
-use zookeeper::{ZkResult, ZooKeeper, ZooKeeperExt, CreateMode, Acl};
+use zookeeper::{ZkResult, ZooKeeper, CreateMode, Acl};
 use zookeeper::recipes::cache::{Data};
 use std::collections::HashMap;
 
@@ -29,7 +29,7 @@ impl AtomicNumber {
 
     pub fn get_data(&self) -> ZkResult<u64> {
         self.zk.get_data(self.path.as_str(), false)
-            .map(|(data, stat)|{
+            .map(|(data, _stat)|{
                 let mut array_data: [u8; 8] = Default::default();
                 array_data.copy_from_slice(&data[0..8]);
                 let number = u64::from_be_bytes(array_data);
@@ -39,7 +39,7 @@ impl AtomicNumber {
 
     pub fn init(&self, number: u64) -> ZkResult<()> {
         match self.zk.exists(self.path.as_str(), false) {
-            Ok(Some(stat)) => {
+            Ok(Some(_stat)) => {
                 return Ok(());
             },
             Ok(None) => {

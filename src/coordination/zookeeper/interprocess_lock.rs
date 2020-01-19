@@ -1,9 +1,7 @@
-use zookeeper::{ZkResult, ZooKeeper, ZooKeeperExt, CreateMode, Acl, ZkError, Watcher, WatchedEvent, WatchedEventType};
+use zookeeper::{ZkResult, ZooKeeper, ZooKeeperExt, CreateMode, Acl, ZkError, WatchedEvent, WatchedEventType};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::time::Instant;
-use std::ops::{Deref, DerefMut};
-use std::borrow::BorrowMut;
 
 const LOCK_PATH: &'static str = "lock-";
 
@@ -99,7 +97,7 @@ impl InterProcessMutex {
 
 #[cfg(test)]
 mod tests {
-    use zookeeper::{ZooKeeper, ZooKeeperExt};
+    use zookeeper::{ZooKeeper};
     use std::time::Duration;
     use crate::coordination::zookeeper::LoggingWatcher;
     use crate::coordination::zookeeper::interprocess_lock::InterProcessMutex;

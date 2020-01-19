@@ -1,13 +1,12 @@
 // TODO: Enable on release
-//#![forbid(unsafe_code)]
-//#![deny(non_upper_case_globals)]
-//#![deny(non_camel_case_types)]
-//#![deny(non_snake_case)]
-//#![deny(unused_mut)]
+#![forbid(unsafe_code)]
+#![deny(non_upper_case_globals)]
+#![deny(non_camel_case_types)]
+#![deny(non_snake_case)]
+#![deny(unused_mut)]
 //#![deny(dead_code)]
-//#![deny(unused_imports)]
+#![deny(unused_imports)]
 //#![deny(missing_docs)]
-//#![forbid(unsafe_code)]
 
 extern crate web3;
 extern crate clap;
@@ -27,7 +26,6 @@ mod coordination;
 
 use std::{thread};
 use signal_hook::{iterator::Signals, SIGINT};
-use futures::channel::mpsc;
 
 use std::process::exit;
 use log::LevelFilter;
@@ -101,7 +99,7 @@ fn cli(options: Opt) {
 
     info!("Creating connection to {}", settings.ethereum.url.as_str());
     let (_eloop, transport) = web3::transports::Http::with_max_parallel(settings.ethereum.url.as_str(), common::MAX_PARALLEL_REQUESTS).unwrap();
-    let mut listener = ethereum::client::LogListener::new(
+    let listener = ethereum::client::LogListener::new(
         &transport,
         &settings.ethereum.logs,
         settings.ethereum.start_block,

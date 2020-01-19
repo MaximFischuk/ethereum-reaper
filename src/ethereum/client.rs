@@ -1,8 +1,5 @@
 use web3::futures::{Future};
 use web3::types::{BlockNumber, BlockId, U64, H256, Log, H160, FilterBuilder};
-use futures::channel::mpsc;
-use std::{thread};
-use std::time::{Duration, SystemTime};
 
 use crate::configuration::settings::EthLog;
 
@@ -19,9 +16,7 @@ pub struct LogListener <'a> {
     batch: Web3<Batch<&'a Http>>,
     logs: &'a Vec<EthLog>,
     batch_size: u64,
-    start_block: BlockNumber,
-
-    current: u64
+    start_block: BlockNumber
 }
 
 pub struct LogStream <'a> {
@@ -41,23 +36,8 @@ impl <'a> LogListener <'a> {
             batch,
             logs,
             batch_size,
-            start_block,
-            current: BLOCK_UNINITIALIZED
+            start_block
         }
-    }
-
-    pub fn current_block(&'a self) -> u64 {
-        self.current
-    }
-
-    fn init_block_number(self: &mut Self) {
-        self.current = match self.web3.eth().block(BlockId::Number(self.start_block)).wait() {
-            Ok(block) => block.map(move |b| b.number.unwrap_or(U64([0]))).unwrap().0[0],
-            Err(e) => {
-                error!("Error while getting start block number {:?}", e);
-                return;
-            }
-        };
     }
 
     pub fn stream(&self) -> LogStream {
@@ -72,7 +52,7 @@ impl <'a> LogListener <'a> {
 impl <'a> Stream for LogStream <'a> {
     type Item = Vec<Log>;
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+    fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.get_mut();
         if this.current == BLOCK_UNINITIALIZED {
             this.current = match this.listener.web3.eth().block(BlockId::Number(this.listener.start_block)).wait() {
