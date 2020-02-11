@@ -27,7 +27,11 @@ signal-hook = "0.1.11"
 ethbloom = "0.6.4"
 hex-serde = "0.1.0"
 hex = "0.4.0"
-rdkafka = { version = "0.22", features = ["cmake-build", "ssl", "gssapi"] }
+rdkafka = { version = "0.23.1", features = ["cmake-build", "ssl", "gssapi"] }
+
+# Add openssl-sys as a direct dependency so it can be cross compiled to
+# x86_64-unknown-linux-musl using the "vendored" feature below
+openssl-sys = "*"
 
 [profile.release]
 opt-level = 3
@@ -39,3 +43,7 @@ panic = 'unwind'
 incremental = false
 overflow-checks = false
 
+[features]
+# Force openssl-sys to staticly link in the openssl library. Necessary when
+# cross compiling to x86_64-unknown-linux-musl.
+vendored = ["openssl-sys/vendored"]
