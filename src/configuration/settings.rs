@@ -39,8 +39,11 @@ pub struct EthBlock {
 
 }
 
+#[derive(Debug, Deserialize)]
 pub struct EthTransaction {
-    
+    pub name: String,
+    pub contracts: Vec<Address>,
+    pub functions: Vec<String>
 }
 
 #[derive(Debug, Deserialize)]
@@ -49,7 +52,8 @@ pub struct Ethereum {
     #[serde(with = "BlockNumberDef")]
     pub start_block: BlockNumber,
     pub batch_size: u64,
-    pub logs: Vec<EthLog>
+    pub logs: Vec<EthLog>,
+    pub transactions: Vec<EthTransaction>
 }
 
 #[derive(Debug, Deserialize)]
@@ -80,7 +84,13 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             log: Log { level: LevelFilter::Info },
-            ethereum: Ethereum { url: "http://localhost:8545".to_owned(), start_block: BlockNumber::Latest, logs: vec![], batch_size: 10 },
+            ethereum: Ethereum {
+                url: "http://localhost:8545".to_owned(),
+                start_block: BlockNumber::Latest,
+                logs: vec![],
+                transactions: vec![],
+                batch_size: 10
+            },
             kafka: MessageBroker { brokers: "localhost:9092".to_owned(), properties: HashMap::default() }
         }
     }
