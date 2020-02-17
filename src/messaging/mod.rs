@@ -5,6 +5,6 @@ pub mod properties;
 
 pub trait SendLog <V, E> {
 
-    fn send_log(&self, log: &Log) -> Result<V, E>;
+    fn send_log(&self, log: &Log, topic: &str) -> Result<V, E>;
 
 }

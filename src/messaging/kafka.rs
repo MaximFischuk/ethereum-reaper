@@ -10,11 +10,11 @@ use rdkafka::error::KafkaError;
 
 impl SendLog <(), KafkaError> for BaseProducer {
 
-    fn send_log(&self, log: &Log) -> Result<(), KafkaError> {
+    fn send_log(&self, log: &Log, topic: &str) -> Result<(), KafkaError> {
         let serialized = serde_json::to_string(log).expect("Cannot serialize to string");
-        let topic = encode(log.topics[0].0);
-        let message = BaseRecord::to("test.logs")
-            .key(topic.as_str())
+        let eth_topic = encode(log.topics[0].0);
+        let message = BaseRecord::to(topic)
+            .key(eth_topic.as_str())
             .headers(OwnedHeaders::new().add("CONTRACT", encode(log.address.0).as_str()))
             .payload(serialized.as_bytes());
         self.send(message).map_err(|(err, _)|err)
