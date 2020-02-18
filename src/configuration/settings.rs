@@ -3,6 +3,10 @@ use log::LevelFilter;
 use serde::{Deserialize};
 use web3::types::{BlockNumber, U64};
 use std::collections::HashMap;
+use regex::Regex;
+use jsonpath::Selector;
+use serde::export::fmt::{Debug};
+use derivative::*;
 
 #[derive(Debug, Deserialize)]
 pub struct Hash32(#[serde(with = "hex_serde")] pub [u8; 32]);
@@ -22,6 +26,16 @@ pub enum BlockNumberDef {
     Latest, Earliest, Pending, #[serde(with = "crate::configuration::deserialize")] Number(U64),
 }
 
+#[derive(Deserialize, Derivative)]
+#[derivative(Debug)]
+pub struct JsonFilter {
+    #[serde(with = "serde_regex")]
+    pub regex: Regex,
+    #[derivative(Debug="ignore")]
+    #[serde(with = "crate::configuration::deserialize::selector")]
+    pub selector: Selector
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Log {
     #[serde(with = "LevelFilterDef")]
@@ -32,18 +46,25 @@ pub struct Log {
 pub struct EthLog {
     pub name: String,
     pub topic: Hash32,
-    pub contracts: Vec<Address>
+    pub contracts: Vec<Address>,
+    pub destination: String,
+    pub filter: Option<JsonFilter>
 }
 
+#[derive(Debug, Deserialize)]
 pub struct EthBlock {
-
+    pub name: String,
+    pub destination: String,
+    pub filter: Option<JsonFilter>
 }
 
 #[derive(Debug, Deserialize)]
 pub struct EthTransaction {
     pub name: String,
     pub contracts: Vec<Address>,
-    pub functions: Vec<String>
+    pub functions: Vec<String>,
+    pub destination: String,
+    pub filter: Option<JsonFilter>
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,7 +74,8 @@ pub struct Ethereum {
     pub start_block: BlockNumber,
     pub batch_size: u64,
     pub logs: Vec<EthLog>,
-    pub transactions: Vec<EthTransaction>
+    pub transactions: Vec<EthTransaction>,
+    pub blocks: Vec<EthBlock>
 }
 
 #[derive(Debug, Deserialize)]
@@ -89,6 +111,7 @@ impl Default for Settings {
                 start_block: BlockNumber::Latest,
                 logs: vec![],
                 transactions: vec![],
+                blocks: vec![],
                 batch_size: 10
             },
             kafka: MessageBroker { brokers: "localhost:9092".to_owned(), properties: HashMap::default() }
