@@ -8,10 +8,10 @@ use jsonpath::Selector;
 use serde::export::fmt::{Debug};
 use derivative::*;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Eq, PartialEq)]
 pub struct Hash32(#[serde(with = "hex_serde")] pub [u8; 32]);
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Eq, PartialEq)]
 pub struct Address(#[serde(with = "hex_serde")] pub [u8; 20]);
 
 #[derive(Deserialize)]
