@@ -1,5 +1,5 @@
 use web3::futures::{Future};
-use web3::types::{BlockNumber, BlockId, U64, H256, Log, H160, FilterBuilder, Block};
+use web3::types::{BlockNumber, BlockId, U64, H256, Log, H160, FilterBuilder, Block, TransactionReceipt};
 
 use crate::configuration::settings::{EthLog};
 
@@ -11,6 +11,12 @@ use futures::task::{Context, Poll};
 use serde_json::Value;
 
 const BLOCK_UNINITIALIZED: u64 = std::u64::MAX;
+
+pub enum FetchTransactions {
+    All,
+    Only(Vec<H256>),
+    None
+}
 
 pub struct LogListener <'a> {
     web3: Web3<&'a Http>,
@@ -156,6 +162,56 @@ impl <'a> BlockListener <'a> {
             batch_size: self.batch_size,
             current: BLOCK_UNINITIALIZED
         }
+    }
+
+    pub fn fetch_transactions(&self, blocks: Vec<Block<H256>>, which: FetchTransactions) -> Vec<TransactionReceipt> {
+        debug!("Preparing to fetch transactions");
+        let transactions_to_fetch: Vec<H256> = match which {
+            FetchTransactions::All =>
+                blocks.iter()
+                    .map(|block| block.to_owned().transactions)
+                    .flat_map(|txs| txs)
+                    .collect(),
+            FetchTransactions::Only(transactions) =>
+                blocks.iter()
+                    .map(|block| block.to_owned().transactions)
+                    .flat_map(|txs| txs)
+                    .filter(|tx| transactions.contains(tx))
+                    .collect(),
+            FetchTransactions::None => vec![]
+        };
+
+        info!("Fetching {} transactions: {:?}", transactions_to_fetch.len(), &transactions_to_fetch);
+        for transaction in transactions_to_fetch {
+            self.batch.eth().transaction_receipt(transaction);
+        }
+
+        let requests = self.batch.transport().submit_batch();
+
+        let result = match requests.wait() {
+            Ok(items) => {
+                let transaction_receipts: Vec<TransactionReceipt> = items.iter()
+                    .filter(|&result| filter_request_result(result))
+                    .map(|value| {
+                        let transaction_receipt: TransactionReceipt = match serde_json::from_value(value.as_ref().unwrap().clone()) {
+                            Ok(b) => b,
+                            Err(e) => {
+                                error!("Cannot to be serialized {}", e);
+                                TransactionReceipt::default()
+                            }
+                        };
+                        transaction_receipt
+                    })
+                    .filter(|tx| tx.block_number.is_some())
+                    .collect();
+                transaction_receipts
+            },
+            Err(e) => {
+                error!("Error result value {:?}", e);
+                vec![]
+            }
+        };
+        result
     }
 }
 
