@@ -3,8 +3,8 @@ use web3::types::{BlockNumber, BlockId, U64, H256, Log, H160, FilterBuilder, Blo
 
 use crate::configuration::settings::{EthLog};
 
-use web3::transports::{Http, Batch};
-use web3::{Web3, Error};
+use web3::transports::{Batch};
+use web3::{Web3, Error, Transport, BatchTransport};
 use futures::stream::Stream;
 use std::pin::Pin;
 use futures::task::{Context, Poll};
@@ -18,22 +18,22 @@ pub enum FetchTransactions {
     None
 }
 
-pub struct LogListener <'a> {
-    web3: Web3<&'a Http>,
-    batch: Web3<Batch<&'a Http>>,
+pub struct LogListener <'a, T: Transport + BatchTransport> {
+    web3: Web3<&'a T>,
+    batch: Web3<Batch<&'a T>>,
     logs: &'a Vec<EthLog>,
     batch_size: u64,
     start_block: BlockNumber
 }
 
-pub struct LogStream <'a> {
-    listener: &'a LogListener<'a>,
+pub struct LogStream <'a, T: Transport + BatchTransport> {
+    listener: &'a LogListener<'a, T>,
     batch_size: u64,
     current: u64
 }
 
-impl <'a> LogListener <'a> {
-    pub fn new (transport: &'a Http, logs: &'a Vec<EthLog>, start_block: BlockNumber, batch_size: u64) -> Self {
+impl <'a, T: Transport + BatchTransport> LogListener <'a, T> {
+    pub fn new (transport: &'a T, logs: &'a Vec<EthLog>, start_block: BlockNumber, batch_size: u64) -> Self {
         let batch = web3::transports::Batch::new(transport);
         let web3 = web3::Web3::new(transport);
         let batch = web3::Web3::new(batch);
@@ -47,7 +47,7 @@ impl <'a> LogListener <'a> {
         }
     }
 
-    pub fn stream(&self) -> LogStream {
+    pub fn stream(&self) -> LogStream<T> {
         LogStream {
             listener: &self,
             batch_size: self.batch_size,
@@ -56,7 +56,7 @@ impl <'a> LogListener <'a> {
     }
 }
 
-impl <'a> Stream for LogStream <'a> {
+impl <'a, T: Transport + BatchTransport> Stream for LogStream <'a, T> {
     type Item = Vec<Log>;
 
     fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -129,21 +129,21 @@ impl <'a> Stream for LogStream <'a> {
     }
 }
 
-pub struct BlockListener <'a> {
-    web3: Web3<&'a Http>,
-    batch: Web3<Batch<&'a Http>>,
+pub struct BlockListener <'a, T: Transport + BatchTransport> {
+    web3: Web3<&'a T>,
+    batch: Web3<Batch<&'a T>>,
     batch_size: u64,
     start_block: BlockNumber
 }
 
-pub struct BlockStream <'a> {
-    listener: &'a BlockListener<'a>,
+pub struct BlockStream <'a, T: Transport + BatchTransport> {
+    listener: &'a BlockListener<'a, T>,
     batch_size: u64,
     current: u64
 }
 
-impl <'a> BlockListener <'a> {
-    pub fn new (transport: &'a Http, start_block: BlockNumber, batch_size: u64) -> Self {
+impl <'a, T: Transport + BatchTransport> BlockListener <'a, T> {
+    pub fn new (transport: &'a T, start_block: BlockNumber, batch_size: u64) -> Self {
         let batch = web3::transports::Batch::new(transport);
         let web3 = web3::Web3::new(transport);
         let batch = web3::Web3::new(batch);
@@ -156,7 +156,7 @@ impl <'a> BlockListener <'a> {
         }
     }
 
-    pub fn stream(&self) -> BlockStream {
+    pub fn stream(&self) -> BlockStream<T> {
         BlockStream {
             listener: &self,
             batch_size: self.batch_size,
@@ -178,7 +178,7 @@ impl <'a> BlockListener <'a> {
                     .flat_map(|txs| txs)
                     .filter(|tx| transactions.contains(tx))
                     .collect(),
-            FetchTransactions::None => vec![]
+            FetchTransactions::None => return vec![]
         };
 
         info!("Fetching {} transactions: {:?}", transactions_to_fetch.len(), &transactions_to_fetch);
@@ -215,7 +215,7 @@ impl <'a> BlockListener <'a> {
     }
 }
 
-impl <'a> Stream for BlockStream <'a> {
+impl <'a, T: Transport + BatchTransport> Stream for BlockStream <'a, T> {
     type Item = Vec<Block<H256>>;
 
     fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
