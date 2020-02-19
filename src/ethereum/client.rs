@@ -252,7 +252,6 @@ impl <'a, T: Transport + BatchTransport> Stream for BlockStream <'a, T> {
         info!("Loading {} blocks", poll_size);
         for offset in 0..poll_size {
             let block_num = current + offset;
-            info!("Preparing block {}({}..{}) for batch", block_num, current, current + poll_size);
             this.listener.batch.eth().block(BlockId::Number(BlockNumber::Number(U64([block_num]))));
         }
         let requests = this.listener.batch.transport().submit_batch();
