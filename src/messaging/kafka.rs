@@ -7,6 +7,7 @@ use crate::messaging::{SendLog, SendBlock, SendReceipt};
 use crate::messaging::properties::kafka;
 use crate::configuration::settings::MessageBroker;
 use rdkafka::error::KafkaError;
+use std::collections::HashMap;
 
 impl SendLog <(), KafkaError> for BaseProducer {
 
@@ -59,7 +60,7 @@ impl From<MessageBroker> for BaseProducer {
     fn from(broker: MessageBroker) -> BaseProducer {
         let mut config = ClientConfig::new();
         config.set(kafka::BOOTSTRAP_SERVERS, broker.brokers.as_str());
-        for (key, value) in broker.properties {
+        for (key, value) in broker.properties.unwrap_or(HashMap::default()) {
             config.set(key.as_str(), value.as_str());
         }
         config.create()

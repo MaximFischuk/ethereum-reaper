@@ -81,7 +81,7 @@ pub struct Ethereum {
 #[derive(Debug, Deserialize)]
 pub struct MessageBroker {
     pub brokers: String,
-    pub properties: HashMap<String, String>
+    pub properties: Option<HashMap<String, String>>
 }
 
 #[derive(Debug, Deserialize)]
@@ -114,7 +114,7 @@ impl Default for Settings {
                 blocks: vec![],
                 batch_size: 10
             },
-            kafka: MessageBroker { brokers: "localhost:9092".to_owned(), properties: HashMap::default() }
+            kafka: MessageBroker { brokers: "localhost:9092".to_owned(), properties: None }
         }
     }
 
