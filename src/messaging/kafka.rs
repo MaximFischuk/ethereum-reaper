@@ -3,13 +3,13 @@ use web3::types::{Log, Block, TransactionReceipt, H256};
 use hex::encode;
 use rdkafka::message::OwnedHeaders;
 use rdkafka::ClientConfig;
-use crate::messaging::{SendLog, SendBlock, SendReceipt};
+use crate::messaging::{SendMessage};
 use crate::messaging::properties::kafka;
 use crate::configuration::settings::MessageBroker;
 use rdkafka::error::KafkaError;
 use std::collections::HashMap;
 
-impl SendLog <(), KafkaError> for BaseProducer {
+impl SendMessage <Log, (), KafkaError> for BaseProducer {
 
     fn send(&self, log: &Log, topic: &str) -> Result<(), KafkaError> {
         let serialized = serde_json::to_string(log).expect("Cannot serialize to string");
@@ -23,7 +23,7 @@ impl SendLog <(), KafkaError> for BaseProducer {
 
 }
 
-impl SendBlock <(), KafkaError> for BaseProducer {
+impl SendMessage <Block<H256>, (), KafkaError> for BaseProducer {
 
     fn send(&self, block: &Block<H256>, topic: &str) -> Result<(), KafkaError> {
         let serialized = serde_json::to_string(block).expect("Cannot serialize to string");
@@ -38,7 +38,7 @@ impl SendBlock <(), KafkaError> for BaseProducer {
 
 }
 
-impl SendReceipt <(), KafkaError> for BaseProducer {
+impl SendMessage <TransactionReceipt, (), KafkaError> for BaseProducer {
 
     fn send(&self, receipt: &TransactionReceipt, topic: &str) -> Result<(), KafkaError> {
         let serialized = serde_json::to_string(receipt).expect("Cannot serialize to string");
