@@ -62,6 +62,9 @@ impl <'a, T: Transport + BatchTransport> Stream for LogStream <'a, T> {
 
     fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.get_mut();
+        if this.batch_size == 0 {
+            return Poll::Ready(None);
+        }
         if this.listener.logs.is_empty() {
             return Poll::Ready(None);
         }
@@ -236,6 +239,9 @@ impl <'a, T: Transport + BatchTransport> Stream for BlockStream <'a, T> {
 
     fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.get_mut();
+        if this.batch_size == 0 {
+            return Poll::Ready(None);
+        }
         if this.current == BLOCK_UNINITIALIZED {
             this.current = match this.listener.web3.eth().block(BlockId::Number(this.listener.start_block)).wait() {
                 Ok(block) => block.map(move |b| b.number.unwrap_or(U64([0]))).unwrap().0[0],
