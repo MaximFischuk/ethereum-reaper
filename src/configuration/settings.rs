@@ -1,6 +1,6 @@
 use config::{ConfigError, Config, File, Environment};
 use log::LevelFilter;
-use serde::{Deserialize};
+use serde::{Deserialize, Serialize};
 use web3::types::{BlockNumber, U64};
 use std::collections::HashMap;
 use regex::Regex;
@@ -116,6 +116,79 @@ impl Default for Settings {
             },
             kafka: MessageBroker { brokers: "localhost:9092".to_owned(), properties: None }
         }
+    }
+
+}
+
+impl JsonFilter {
+
+    pub fn is_exact_filter<T>(&self, message: &T) -> bool
+        where
+            T: Serialize
+    {
+        let data = serde_json::to_value(message).expect("Cannot serialize object to json");
+        let result = self.selector.find(&data)
+            .map(|v|v.as_str().unwrap())
+            .filter(|v|self.regex.is_match(v))
+            .count();
+        result > 0
+    }
+
+}
+
+#[cfg(test)]
+mod tests {
+    use super::JsonFilter;
+    use web3::types::{Log, Bytes, H256, Address};
+    use regex::Regex;
+    use jsonpath::Selector;
+
+    #[test]
+    fn test_is_exact_filter() {
+        let log = Log {
+            address: Address::from_low_u64_be(1),
+            topics: vec![],
+            data: Bytes(vec![]),
+            block_hash: Some(H256::from_low_u64_be(2)),
+            block_number: Some(1.into()),
+            transaction_hash: Some(H256::from_low_u64_be(3)),
+            transaction_index: Some(42.into()),
+            log_index: Some(0.into()),
+            transaction_log_index: Some(0.into()),
+            log_type: None,
+            removed: None,
+        };
+        let filter = JsonFilter {
+            regex: Regex::new(r"^0x2a$").unwrap(),
+            selector: Selector::new("$.transactionIndex").unwrap()
+        };
+
+        assert!(filter.regex.is_match("0x2a"));
+        assert!(filter.is_exact_filter(&log));
+    }
+
+    #[test]
+    fn test_is_exact_filter2() {
+        let log = Log {
+            address: Address::from_low_u64_be(1),
+            topics: vec![],
+            data: Bytes(vec![]),
+            block_hash: Some(H256::from_low_u64_be(2)),
+            block_number: Some(7123456.into()),
+            transaction_hash: Some(H256::from_low_u64_be(3)),
+            transaction_index: Some(42.into()),
+            log_index: Some(0.into()),
+            transaction_log_index: Some(0.into()),
+            log_type: None,
+            removed: None,
+        };
+        let filter = JsonFilter {
+            regex: Regex::new(r"^0x6cb200$").unwrap(),
+            selector: Selector::new("$.blockNumber").unwrap()
+        };
+
+        assert!(filter.regex.is_match("0x6cb200"));
+        assert!(filter.is_exact_filter(&log));
     }
 
 }
