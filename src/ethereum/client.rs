@@ -1,5 +1,5 @@
 use web3::futures::{Future};
-use web3::types::{BlockNumber, BlockId, U64, H256, Log, H160, FilterBuilder, Block, TransactionReceipt};
+use web3::types::{BlockNumber, BlockId, U64, H256, Log, H160, FilterBuilder, Block, TransactionReceipt, Transaction, TransactionId};
 
 use crate::configuration::settings::{EthLog};
 
@@ -9,6 +9,7 @@ use futures::stream::Stream;
 use std::pin::Pin;
 use futures::task::{Context, Poll};
 use serde_json::Value;
+use serde::de::DeserializeOwned;
 
 const BLOCK_UNINITIALIZED: u64 = std::u64::MAX;
 
@@ -164,9 +165,56 @@ impl <'a, T: Transport + BatchTransport> BlockListener <'a, T> {
         }
     }
 
-    pub fn fetch_transactions(&self, blocks: Vec<Block<H256>>, which: FetchTransactions) -> Vec<TransactionReceipt> {
+    pub fn fetch_transactions(&self, blocks: Vec<Block<H256>>, which: FetchTransactions) -> Vec<Transaction> {
         debug!("Preparing to fetch transactions");
-        let transactions_to_fetch: Vec<H256> = match which {
+        let transactions_to_fetch: Vec<H256> = Self::filter_transactions_from_blocks(blocks, which);
+
+        info!("Fetching {} transactions: {:?}", transactions_to_fetch.len(), &transactions_to_fetch);
+        for transaction in transactions_to_fetch {
+            self.batch.eth().transaction(TransactionId::Hash(transaction));
+        }
+
+        let requests = self.batch.transport().submit_batch();
+
+        let result = match requests.wait() {
+            Ok(items) => {
+                let transactions: Vec<Transaction> = deserialize_batch_result(&items);
+                transactions
+            },
+            Err(e) => {
+                error!("Error result value {:?}", e);
+                vec![]
+            }
+        };
+        result
+    }
+
+    pub fn fetch_receipts(&self, blocks: Vec<Block<H256>>, which: FetchTransactions) -> Vec<TransactionReceipt> {
+        debug!("Preparing to fetch receipts");
+        let transactions_to_fetch: Vec<H256> = Self::filter_transactions_from_blocks(blocks, which);
+
+        info!("Fetching {} receipts: {:?}", transactions_to_fetch.len(), &transactions_to_fetch);
+        for transaction in transactions_to_fetch {
+            self.batch.eth().transaction_receipt(transaction);
+        }
+
+        let requests = self.batch.transport().submit_batch();
+
+        let result = match requests.wait() {
+            Ok(items) => {
+                let transaction_receipts: Vec<TransactionReceipt> = deserialize_batch_result(&items);
+                transaction_receipts
+            },
+            Err(e) => {
+                error!("Error result value {:?}", e);
+                vec![]
+            }
+        };
+        result
+    }
+
+    fn filter_transactions_from_blocks(blocks: Vec<Block<H256>>, which: FetchTransactions) -> Vec<H256> {
+        match which {
             FetchTransactions::All =>
                 blocks.iter()
                     .map(|block| block.to_owned().transactions)
@@ -178,40 +226,8 @@ impl <'a, T: Transport + BatchTransport> BlockListener <'a, T> {
                     .flat_map(|txs| txs)
                     .filter(|tx| transactions.contains(tx))
                     .collect(),
-            FetchTransactions::None => return vec![]
-        };
-
-        info!("Fetching {} transactions: {:?}", transactions_to_fetch.len(), &transactions_to_fetch);
-        for transaction in transactions_to_fetch {
-            self.batch.eth().transaction_receipt(transaction);
+            FetchTransactions::None => vec![]
         }
-
-        let requests = self.batch.transport().submit_batch();
-
-        let result = match requests.wait() {
-            Ok(items) => {
-                let transaction_receipts: Vec<TransactionReceipt> = items.iter()
-                    .filter(|&result| filter_request_result(result))
-                    .map(|value| {
-                        let transaction_receipt: TransactionReceipt = match serde_json::from_value(value.as_ref().unwrap().clone()) {
-                            Ok(b) => b,
-                            Err(e) => {
-                                error!("Cannot to be serialized {}", e);
-                                TransactionReceipt::default()
-                            }
-                        };
-                        transaction_receipt
-                    })
-                    .filter(|tx| tx.block_number.is_some())
-                    .collect();
-                transaction_receipts
-            },
-            Err(e) => {
-                error!("Error result value {:?}", e);
-                vec![]
-            }
-        };
-        result
     }
 }
 
@@ -259,20 +275,7 @@ impl <'a, T: Transport + BatchTransport> Stream for BlockStream <'a, T> {
         this.current = current + poll_size;
         match requests.wait() {
             Ok(items) => {
-                let blocks: Vec<Block<H256>> = items.iter()
-                    .filter(|&result| filter_request_result(result))
-                    .map(|value| {
-                        let block: Block<H256> = match serde_json::from_value(value.as_ref().unwrap().clone()) {
-                            Ok(b) => b,
-                            Err(e) => {
-                                error!("Cannot to be serialized {}", e);
-                                Block::default()
-                            }
-                        };
-                        block
-                    })
-                    .filter(|b| b.hash.is_some())
-                    .collect();
+                let blocks: Vec<Block<H256>> = deserialize_batch_result(&items);
                 return Poll::Ready(Some(blocks));
             },
             Err(e) => error!("Error result value {:?}", e)
@@ -290,4 +293,26 @@ fn filter_request_result(result: &Result<Value, Error>) -> bool {
             false
         }
     }
+}
+
+fn deserialize_batch_result<R>(result: &Vec<Result<Value, Error>>) -> Vec<R>
+    where
+        R: DeserializeOwned
+{
+    let rs: Vec<R> = result.iter()
+        .filter(|&result| filter_request_result(result))
+        .map(|value| {
+            let r: Option<R> = match serde_json::from_value(value.as_ref().unwrap().clone()) {
+                Ok(b) => Some(b),
+                Err(e) => {
+                    error!("Cannot to be serialized {}", e);
+                    None
+                }
+            };
+            r
+        })
+        .filter(|tx| tx.is_some())
+        .map(|tx| tx.unwrap())
+        .collect();
+    rs
 }
