@@ -4,6 +4,7 @@
 #![deny(non_camel_case_types)]
 #![deny(non_snake_case)]
 #![deny(unused_mut)]
+#![deny(unused_variables)]
 //#![deny(dead_code)]
 #![deny(unused_imports)]
 //#![deny(missing_docs)]
@@ -17,8 +18,11 @@ extern crate fern;
 extern crate chrono;
 extern crate rdkafka;
 extern crate structopt;
+extern crate serde_regex;
+extern crate derivative;
 #[macro_use] extern crate log;
 
+mod app;
 mod configuration;
 mod ethereum;
 mod messaging;
@@ -32,14 +36,11 @@ use log::LevelFilter;
 
 use configuration::settings::{ Settings };
 use configuration::constants::{ common };
-use futures::executor::block_on;
 use rdkafka::producer::BaseProducer;
-use messaging::SendLog;
 use configuration::command_line::{ Opt, LogLevel };
 use structopt::StructOpt;
 use std::path::PathBuf;
-use futures::future;
-use futures::stream::StreamExt;
+use app::app::App;
 
 fn main() {
     let options = Opt::from_args();
@@ -96,26 +97,11 @@ fn cli(options: Opt) {
         .unwrap_or(settings.log.level);
     init_logging(log_level, &options.log_output_file);
     debug!("Loaded configurations {:?}", settings);
+    let kafka = settings.kafka;
+    let mq_producer = BaseProducer::from(kafka);
 
     info!("Creating connection to {}", settings.ethereum.url.as_str());
     let (_eloop, transport) = web3::transports::Http::with_max_parallel(settings.ethereum.url.as_str(), common::MAX_PARALLEL_REQUESTS).unwrap();
-    let listener = ethereum::client::LogListener::new(
-        &transport,
-        &settings.ethereum.logs,
-        settings.ethereum.start_block,
-        settings.ethereum.batch_size
-    );
-    let kafka = settings.kafka;
-    let mq_producer = BaseProducer::from(kafka);
-    let fut = listener.stream().for_each(|logs| {
-        for message in logs {
-            info!("Received message {:?}", message);
-            match mq_producer.send_log(&message) {
-                Ok(_) => trace!("Successful sent message"),
-                Err(error) => error!("Failed to send message {}", error)
-            };
-        }
-        future::ready(())
-    });
-    block_on(fut);
+    let application = App::new(&settings.ethereum, &transport);
+    application.run(mq_producer);
 }

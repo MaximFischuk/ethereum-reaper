@@ -4,16 +4,27 @@ ethereum:
   url: "https://mainnet.infura.io/v3/a6b0643f19d54ff685750d5ccd223d31"
   start_block:
     Number: 7000000
-  batch_size: 5000
+  batch_size: 100
   logs:
     - name: Transfer(PRO)
       topic: ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef
+      destination: ethereum.mainnet.erc20.propy.transfer
       contracts:
         - '226bb599a12c826476e3a771454697ea52e9e220'
+#      filter:
+#        regex: '^0x6ad5d9$'
+#        selector: '$.blockNumber'
+    - name: Transfer(Tether)
+      topic: ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef
+      destination: ethereum.mainnet.erc20.usdt.transfer
+      contracts:
+        - 'dac17f958d2ee523a2206206994597c13d831ec7'
+#      filter:
+#        regex: '^0x6ad677$'
+#        selector: '$.blockNumber'
+  transactions: []
+  blocks:
+    - name: Blocks
+      destination: ethereum.mainnet.blocks
 kafka:
-  brokers: 'el.frontnode.vareger.com:9095'
-  properties:
-    'security.protocol': SASL_PLAINTEXT
-    'sasl.mechanism': SCRAM-SHA-512
-    'sasl.username': simple-games-stage
-    'sasl.password': KRh43E7XzqNKpRN
+  brokers: 'localhost:9092'
