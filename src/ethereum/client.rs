@@ -1,5 +1,5 @@
 use web3::futures::{Future};
-use web3::types::{BlockNumber, BlockId, U64, H256, Log, H160, FilterBuilder, Block, TransactionReceipt, Transaction, TransactionId};
+use web3::types::{BlockNumber, BlockId, U64, H256, Log, H160, FilterBuilder, Block, TransactionReceipt, Transaction, TransactionId, Filter};
 
 use crate::configuration::settings::{EthLog};
 
@@ -97,12 +97,7 @@ impl <'a, T: Transport + BatchTransport> Stream for LogStream <'a, T> {
         }
         info!("Preparing blocks {}..{}({}) for batch", current, current + poll_size, poll_size);
         for filter in this.listener.logs {
-            let current = FilterBuilder::default()
-                .from_block(BlockNumber::Number(U64([current])))
-                .to_block(BlockNumber::Number(U64([current + poll_size])))
-                .address(filter.contracts.iter().map(|a| H160(a.0)).collect())
-                .topics(Some(vec!(H256(filter.topic.0))), None, None, None)
-                .build();
+            let current = eth_filter(&filter, BlockNumber::Number(U64([current])), BlockNumber::Number(U64([current + poll_size])));
             this.listener.batch.eth().logs(current);
         }
         let requests = this.listener.batch.transport().submit_batch();
@@ -111,21 +106,9 @@ impl <'a, T: Transport + BatchTransport> Stream for LogStream <'a, T> {
 
         match requests.wait() {
             Ok(items) => {
-                let logs: Vec<Log> = items.iter()
-                    .filter(|&result| filter_request_result(result))
-                    .map(|value| {
-                        let logs: Vec<Log> = match serde_json::from_value(value.as_ref().unwrap().clone()) {
-                            Ok(b) => b,
-                            Err(e) => {
-                                error!("Cannot to be serialized {}", e);
-                                vec![]
-                            }
-                        };
-                        logs
-                    })
-                    .flat_map(|logs|logs)
-                    .collect();
-                return Poll::Ready(Some(logs));
+                let logs: Vec<Vec<Log>> = deserialize_batch_result(&items);
+                let result: Vec<Log> = logs.iter().flat_map(|logs|logs.clone()).collect();
+                return Poll::Ready(Some(result));
             },
             Err(e) => error!("Error result value {:?}", e)
         }
@@ -321,4 +304,13 @@ fn deserialize_batch_result<R>(result: &Vec<Result<Value, Error>>) -> Vec<R>
         .map(|tx| tx.unwrap())
         .collect();
     rs
+}
+
+fn eth_filter(log_filter: &EthLog, from: BlockNumber, to: BlockNumber) -> Filter {
+    FilterBuilder::default()
+        .from_block(from)
+        .to_block(to)
+        .address(log_filter.contracts.iter().map(|a| H160(a.0)).collect())
+        .topics(Some(vec!(H256(log_filter.topic.0))), None, None, None)
+        .build()
 }
