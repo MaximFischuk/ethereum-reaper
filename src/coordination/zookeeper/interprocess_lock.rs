@@ -95,6 +95,12 @@ impl InterProcessMutex {
     }
 }
 
+impl Drop for InterProcessMutex {
+    fn drop(&mut self) {
+        self.release();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use zookeeper::{ZooKeeper};
@@ -125,7 +131,40 @@ mod tests {
             thread::sleep(Duration::from_secs(1));
             let result2 = locker1.release();
 
-            result.is_ok() && result2.is_ok()
+            (result.is_ok(), result2.is_ok())
+        });
+        let t2 = thread::spawn(move || {
+            let result = locker2.acquire(Duration::from_secs(2));
+            thread::sleep(Duration::from_secs(1));
+            let result2 = locker2.release();
+
+            (result.is_ok(), result2.is_ok())
+        });
+        let t3 = thread::spawn(move || {
+            let result = locker3.acquire(Duration::from_secs(3));
+            let result2 = locker3.release();
+
+            (result.is_ok(), result2.is_ok())
+        });
+        let r1 = t1.join().unwrap();
+        let r2 = t2.join().unwrap();
+        let r3 = t3.join().unwrap();
+        assert_eq!((r1, r2, r3), ((true, true), (true, true), (true, true)));
+    }
+
+    #[test]
+    fn test_aquire_3_locks_forget_1st_release() {
+        let zk = Arc::new(ZooKeeper::connect("localhost:2181", Duration::from_millis(50), LoggingWatcher).unwrap());
+        let locker1 = InterProcessMutex::new(zk.clone(), "/reaper/tests/interprocess_lock").unwrap();
+        let locker2 = InterProcessMutex::new(zk.clone(), "/reaper/tests/interprocess_lock").unwrap();
+        let locker3 = InterProcessMutex::new(zk.clone(), "/reaper/tests/interprocess_lock").unwrap();
+
+        let t1 = thread::spawn(move || {
+            let result = locker1.acquire(Duration::from_millis(100));
+            thread::sleep(Duration::from_secs(1));
+
+            // Here removed release call
+            result.is_ok()
         });
         let t2 = thread::spawn(move || {
             let result = locker2.acquire(Duration::from_secs(2));
