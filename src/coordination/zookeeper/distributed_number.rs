@@ -44,7 +44,7 @@ impl AtomicNumber {
             },
             Ok(None) => {
                 let data = Vec::from(&number.to_be_bytes()[..]);
-                self.zk.create(self.path.as_str(), data.clone(), Acl::open_unsafe().clone(), CreateMode::Persistent).unwrap();
+                self.zk.create(self.path.as_str(), data.clone(), Acl::open_unsafe().clone(), CreateMode::Persistent)?;
                 return self.zk
                     .set_data(self.path.as_str(), data, None)
                     .map(|_|());
