@@ -1,3 +1,4 @@
+use std::sync::Mutex;
 use web3::futures::{Future};
 use web3::types::{BlockNumber, BlockId, U64, H256, Log, H160, FilterBuilder, Block, TransactionReceipt, Transaction, TransactionId, Filter};
 
@@ -10,6 +11,13 @@ use std::pin::Pin;
 use futures::task::{Context, Poll};
 use serde_json::Value;
 use serde::de::DeserializeOwned;
+use crate::coordination::zookeeper::interprocess_lock::InterProcessMutex;
+use std::sync::Arc;
+use std::time::Duration;
+use zookeeper::ZooKeeper;
+use crate::coordination::zookeeper::LoggingWatcher;
+use crate::coordination::zookeeper::distributed_number::AtomicNumber;
+use crate::ethereum::NumberStorage;
 
 const BLOCK_UNINITIALIZED: u64 = std::u64::MAX;
 
@@ -17,6 +25,39 @@ pub enum FetchTransactions {
     All,
     Only(Vec<H256>),
     None
+}
+
+pub struct LocalStorage {
+    current: Arc<Mutex<u64>>
+}
+
+impl NumberStorage for LocalStorage {
+
+    fn read(&self) -> Option<u64> {
+        let data = self.current.lock().unwrap();
+
+        if *data == BLOCK_UNINITIALIZED {
+            None
+        } else {
+            Some(*data)
+        }
+    }
+
+    fn write(&self, num: u64) {
+        let mut data = self.current.lock().unwrap();
+        *data = num;
+    }
+
+}
+
+impl Default for LocalStorage {
+
+    fn default() -> Self {
+        LocalStorage{
+            current: Arc::new(Mutex::new(BLOCK_UNINITIALIZED))
+        }
+    }
+
 }
 
 pub struct LogListener <'a, T: Transport + BatchTransport> {
@@ -27,10 +68,10 @@ pub struct LogListener <'a, T: Transport + BatchTransport> {
     start_block: BlockNumber
 }
 
-pub struct LogStream <'a, T: Transport + BatchTransport> {
+pub struct LogStream <'a, T: Transport + BatchTransport, POS: NumberStorage> {
     listener: &'a LogListener<'a, T>,
     batch_size: u64,
-    current: u64
+    current: POS
 }
 
 impl <'a, T: Transport + BatchTransport> LogListener <'a, T> {
@@ -48,44 +89,53 @@ impl <'a, T: Transport + BatchTransport> LogListener <'a, T> {
         }
     }
 
-    pub fn stream(&self) -> LogStream<T> {
+    pub fn stream(&self) -> LogStream<T, LocalStorage> {
         LogStream {
             listener: &self,
             batch_size: self.batch_size,
-            current: BLOCK_UNINITIALIZED
+            current: LocalStorage::default()
         }
     }
 }
 
-impl <'a, T: Transport + BatchTransport> Stream for LogStream <'a, T> {
+impl <'a, T, P> Stream for LogStream <'a, T, P>
+    where
+        T: Transport + BatchTransport,
+        P: NumberStorage + Unpin
+{
     type Item = Vec<Log>;
 
     fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let mut this = self.get_mut();
-        if this.batch_size == 0 {
+        if self.batch_size == 0 {
             return Poll::Ready(None);
         }
-        if this.listener.logs.is_empty() {
+        if self.listener.logs.is_empty() {
             return Poll::Ready(None);
         }
-        if this.current == BLOCK_UNINITIALIZED {
-            this.current = match this.listener.web3.eth().block(BlockId::Number(this.listener.start_block)).wait() {
+        let current_stored = self.current.read().unwrap_or(BLOCK_UNINITIALIZED);
+        let current = if current_stored == BLOCK_UNINITIALIZED {
+            let start_block = match self.listener.web3.eth().block(BlockId::Number(self.listener.start_block)).wait() {
                 Ok(block) => block.map(move |b| b.number.unwrap_or(U64([0]))).unwrap().0[0],
                 Err(e) => {
                     error!("Error while getting start block number {:?}", e);
                     return Poll::Ready(None);
                 }
-            }
-        }
-        let head_block = match this.listener.web3.eth().block_number().wait() {
+            };
+            self.current.write(start_block);
+            start_block
+        } else {
+            current_stored
+        };
+
+        let head_block = match self.listener.web3.eth().block_number().wait() {
             Ok(number) => number.0[0],
             Err(e) => {
                 error!("Error while getting head block number {:?}", e);
                 return Poll::Ready(None);
             }
         };
-        let current = this.current;
-        let batch_size = this.batch_size;
+
+        let batch_size = self.batch_size;
         let poll_size: u64 = match head_block {
             head if head > current && head - current > batch_size => batch_size,
             head if head > current => head - current,
@@ -96,13 +146,13 @@ impl <'a, T: Transport + BatchTransport> Stream for LogStream <'a, T> {
             return Poll::Pending;
         }
         info!("Preparing blocks {}..{}({}) for batch", current, current + poll_size, poll_size);
-        for filter in this.listener.logs {
+        for filter in self.listener.logs {
             let current = eth_filter(&filter, BlockNumber::Number(U64([current])), BlockNumber::Number(U64([current + poll_size])));
-            this.listener.batch.eth().logs(current);
+            self.listener.batch.eth().logs(current);
         }
-        let requests = this.listener.batch.transport().submit_batch();
+        let requests = self.listener.batch.transport().submit_batch();
 
-        this.current = current + poll_size;
+        self.current.write(current + poll_size);
 
         match requests.wait() {
             Ok(items) => {
@@ -126,7 +176,8 @@ pub struct BlockListener <'a, T: Transport + BatchTransport> {
 pub struct BlockStream <'a, T: Transport + BatchTransport> {
     listener: &'a BlockListener<'a, T>,
     batch_size: u64,
-    current: u64
+    current: u64,
+    lock: Option<Arc<InterProcessMutex>>
 }
 
 impl <'a, T: Transport + BatchTransport> BlockListener <'a, T> {
@@ -147,7 +198,20 @@ impl <'a, T: Transport + BatchTransport> BlockListener <'a, T> {
         BlockStream {
             listener: &self,
             batch_size: self.batch_size,
-            current: BLOCK_UNINITIALIZED
+            current: BLOCK_UNINITIALIZED,
+            lock: None
+        }
+    }
+
+    pub fn distributed_stream(&self, zk_url: &str) -> BlockStream<T> {
+        let zk = Arc::new(ZooKeeper::connect(zk_url, Duration::from_millis(50), LoggingWatcher).unwrap());
+        let locker = InterProcessMutex::new(zk.clone(), "/reaper/app/interprocess_lock").unwrap();
+        let _number = AtomicNumber::new(zk.clone(), "/reaper/app/number").unwrap();
+        BlockStream {
+            listener: &self,
+            batch_size: self.batch_size,
+            current: BLOCK_UNINITIALIZED,
+            lock: Some(Arc::new(locker))
         }
     }
 
@@ -235,6 +299,12 @@ impl <'a, T: Transport + BatchTransport> Stream for BlockStream <'a, T> {
             }
         }
 
+        if let Some(lock) = this.lock.as_ref() {
+            if lock.acquire(Duration::from_millis(200)).is_err() {
+                warn!("Failed acquire leadership");
+                return Poll::Pending;
+            }
+        }
         let head_block = match this.listener.web3.eth().block_number().wait() {
             Ok(number) => number.0[0],
             Err(e) => {
@@ -268,6 +338,11 @@ impl <'a, T: Transport + BatchTransport> Stream for BlockStream <'a, T> {
                 return Poll::Ready(Some(blocks));
             },
             Err(e) => error!("Error result value {:?}", e)
+        }
+        if let Some(lock) = this.lock.as_ref() {
+            if lock.release().is_err() {
+                warn!("Error releasing leadership");
+            }
         }
 
         Poll::Pending
