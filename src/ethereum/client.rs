@@ -143,7 +143,7 @@ impl <'a, T, P> Stream for LogStream <'a, T, P>
         };
         if poll_size == 0 {
             debug!("Has no new blocks, waiting...");
-            return Poll::Pending;
+            return Poll::Ready(Some(vec![]));
         }
         info!("Preparing blocks {}..{}({}) for batch", current, current + poll_size, poll_size);
         for filter in self.listener.logs {
@@ -162,7 +162,7 @@ impl <'a, T, P> Stream for LogStream <'a, T, P>
             },
             Err(e) => error!("Error result value {:?}", e)
         }
-        Poll::Pending
+        Poll::Ready(Some(vec![]))
     }
 }
 
@@ -302,7 +302,7 @@ impl <'a, T: Transport + BatchTransport> Stream for BlockStream <'a, T> {
         if let Some(lock) = this.lock.as_ref() {
             if lock.acquire(Duration::from_millis(200)).is_err() {
                 warn!("Failed acquire leadership");
-                return Poll::Pending;
+                return Poll::Ready(Some(vec![]));
             }
         }
         let head_block = match this.listener.web3.eth().block_number().wait() {
@@ -321,7 +321,7 @@ impl <'a, T: Transport + BatchTransport> Stream for BlockStream <'a, T> {
         };
         if poll_size == 0 {
             debug!("Has no new blocks, waiting...");
-            return Poll::Pending;
+            return Poll::Ready(Some(vec![]));
         }
         info!("Preparing blocks {}..{}({}) for batch", current, current + poll_size, poll_size);
         info!("Loading {} blocks", poll_size);
@@ -345,7 +345,7 @@ impl <'a, T: Transport + BatchTransport> Stream for BlockStream <'a, T> {
             }
         }
 
-        Poll::Pending
+        Poll::Ready(Some(vec![]))
     }
 }
 
