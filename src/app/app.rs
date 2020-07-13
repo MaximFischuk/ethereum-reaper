@@ -10,7 +10,7 @@ use web3::{Transport, BatchTransport};
 use serde::export::fmt::Display;
 use futures::{future};
 use futures::stream::{StreamExt, Empty};
-use web3::types::{Log, Block, H256};
+use web3::types::{Log, Block, Transaction};
 use futures::executor::block_on;
 
 pub struct App <'a, T: Transport + BatchTransport + Sync> {
@@ -54,7 +54,7 @@ impl <'a, T: Transport + BatchTransport + Sync> App <'a, T> {
 
     pub fn run <MQ, R, E> (&self, broker: MQ)
         where
-            MQ: SendMessage<Block<H256>, R, E> + SendMessage<Log, R, E>,
+            MQ: SendMessage<Block<Transaction>, R, E> + SendMessage<Log, R, E>,
             E: Display
     {
         let block_stream = if let Some(block_listener) = &self.block_listener {

@@ -215,13 +215,13 @@ impl <'a, T: Transport + BatchTransport> BlockListener <'a, T> {
         }
     }
 
-    pub fn fetch_transactions(&self, blocks: Vec<Block<H256>>, which: FetchTransactions) -> Vec<Transaction> {
+    pub fn fetch_transactions(&self, blocks: Vec<Block<Transaction>>, which: FetchTransactions) -> Vec<Transaction> {
         debug!("Preparing to fetch transactions");
-        let transactions_to_fetch: Vec<H256> = Self::filter_transactions_from_blocks(blocks, which);
+        let transactions_to_fetch: Vec<Transaction> = Self::filter_transactions_from_blocks(blocks, which);
 
         info!("Fetching {} transactions: {:?}", transactions_to_fetch.len(), &transactions_to_fetch);
         for transaction in transactions_to_fetch {
-            self.batch.eth().transaction(TransactionId::Hash(transaction));
+            self.batch.eth().transaction(TransactionId::Hash(transaction.hash));
         }
 
         let requests = self.batch.transport().submit_batch();
@@ -239,13 +239,13 @@ impl <'a, T: Transport + BatchTransport> BlockListener <'a, T> {
         result
     }
 
-    pub fn fetch_receipts(&self, blocks: Vec<Block<H256>>, which: FetchTransactions) -> Vec<TransactionReceipt> {
+    pub fn fetch_receipts(&self, blocks: Vec<Block<Transaction>>, which: FetchTransactions) -> Vec<TransactionReceipt> {
         debug!("Preparing to fetch receipts");
-        let transactions_to_fetch: Vec<H256> = Self::filter_transactions_from_blocks(blocks, which);
+        let transactions_to_fetch: Vec<Transaction> = Self::filter_transactions_from_blocks(blocks, which);
 
         info!("Fetching {} receipts: {:?}", transactions_to_fetch.len(), &transactions_to_fetch);
         for transaction in transactions_to_fetch {
-            self.batch.eth().transaction_receipt(transaction);
+            self.batch.eth().transaction_receipt(transaction.hash);
         }
 
         let requests = self.batch.transport().submit_batch();
@@ -263,7 +263,7 @@ impl <'a, T: Transport + BatchTransport> BlockListener <'a, T> {
         result
     }
 
-    fn filter_transactions_from_blocks(blocks: Vec<Block<H256>>, which: FetchTransactions) -> Vec<H256> {
+    fn filter_transactions_from_blocks(blocks: Vec<Block<Transaction>>, which: FetchTransactions) -> Vec<Transaction> {
         match which {
             FetchTransactions::All =>
                 blocks.iter()
@@ -274,7 +274,7 @@ impl <'a, T: Transport + BatchTransport> BlockListener <'a, T> {
                 blocks.iter()
                     .map(|block| block.to_owned().transactions)
                     .flat_map(|txs| txs)
-                    .filter(|tx| transactions.contains(tx))
+                    .filter(|tx| transactions.contains(&tx.hash))
                     .collect(),
             FetchTransactions::None => vec![]
         }
@@ -282,7 +282,7 @@ impl <'a, T: Transport + BatchTransport> BlockListener <'a, T> {
 }
 
 impl <'a, T: Transport + BatchTransport> Stream for BlockStream <'a, T> {
-    type Item = Vec<Block<H256>>;
+    type Item = Vec<Block<Transaction>>;
 
     fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.get_mut();
@@ -334,7 +334,7 @@ impl <'a, T: Transport + BatchTransport> Stream for BlockStream <'a, T> {
         this.current = current + poll_size;
         match requests.wait() {
             Ok(items) => {
-                let blocks: Vec<Block<H256>> = deserialize_batch_result(&items);
+                let blocks: Self::Item = deserialize_batch_result(&items);
                 return Poll::Ready(Some(blocks));
             },
             Err(e) => error!("Error result value {:?}", e)

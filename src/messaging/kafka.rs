@@ -1,5 +1,5 @@
 use rdkafka::producer::{BaseProducer, BaseRecord, FutureProducer, FutureRecord, DeliveryFuture};
-use web3::types::{Log, Block, TransactionReceipt, H256};
+use web3::types::{Log, Block, TransactionReceipt, Transaction};
 use hex::encode;
 use rdkafka::message::OwnedHeaders;
 use rdkafka::ClientConfig;
@@ -25,9 +25,9 @@ impl SendMessage <Log, (), KafkaError> for BaseProducer {
 
 }
 
-impl SendMessage <Block<H256>, (), KafkaError> for BaseProducer {
+impl SendMessage <Block<Transaction>, (), KafkaError> for BaseProducer {
 
-    fn send(&self, block: &Block<H256>, topic: &str) -> Result<(), KafkaError> {
+    fn send(&self, block: &Block<Transaction>, topic: &str) -> Result<(), KafkaError> {
         let serialized = serde_json::to_string(block).expect("Cannot serialize to string");
         let eth_block_number = block.number.unwrap().0[0].to_string();
         let message = BaseRecord::to(topic)
@@ -84,9 +84,9 @@ impl SendMessage <Log, DeliveryFuture, ()> for FutureProducer {
 
 }
 
-impl SendMessage <Block<H256>, DeliveryFuture, ()> for FutureProducer {
+impl SendMessage <Block<Transaction>, DeliveryFuture, ()> for FutureProducer {
 
-    fn send(&self, block: &Block<H256>, topic: &str) -> Result<DeliveryFuture, ()> {
+    fn send(&self, block: &Block<Transaction>, topic: &str) -> Result<DeliveryFuture, ()> {
         let serialized = serde_json::to_string(block).expect("Cannot serialize to string");
         let eth_block_number = block.number.unwrap().0[0].to_string();
         let message = FutureRecord::to(topic)
