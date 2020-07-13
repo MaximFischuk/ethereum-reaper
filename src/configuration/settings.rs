@@ -16,12 +16,14 @@ pub struct Address(#[serde(with = "hex_serde")] pub [u8; 20]);
 
 #[derive(Deserialize)]
 #[serde(remote = "LevelFilter")]
+#[serde(rename_all = "lowercase")]
 pub enum LevelFilterDef {
     Off, Error, Warn, Info, Debug, Trace,
 }
 
 #[derive(Deserialize)]
 #[serde(remote = "BlockNumber")]
+#[serde(rename_all = "lowercase")]
 pub enum BlockNumberDef {
     Latest, Earliest, Pending, #[serde(with = "crate::configuration::deserialize")] Number(U64),
 }

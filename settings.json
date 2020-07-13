@@ -1,19 +1,35 @@
 {
   "log": {
-    "level": "Info"
+    "level": "info"
   },
   "ethereum": {
     "url": "https://mainnet.infura.io/v3/a6b0643f19d54ff685750d5ccd223d31",
     "start_block": {
-      "Number": "8000000"
+      "number": "10354463"
     },
-    "batch_size": 100,
+    "batch_size": 50,
     "logs": [
       {
         "name": "Transfer(USDT)",
         "topic": "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+        "destination": "ethereum.mainnet.erc20.usdt.transfer",
         "contracts": [ "dac17f958d2ee523a2206206994597c13d831ec7" ]
       }
-    ]
+    ],
+    "transactions": [],
+    "blocks": []
+  },
+  "kafka": {
+    "brokers": "el.frontnode.vareger.com:9095",
+    "properties": {
+      "security.protocol": "SASL_PLAINTEXT",
+      "sasl.mechanism": "SCRAM-SHA-512",
+      "sasl.username": "simple-games-stage",
+      "sasl.password": "KRh43E7XzqNKpRN"
+    }
+  },
+  "zookeeper": {
+    "namespace": "ethereum-poller-test-1",
+    "connection": "localhost:2181"
   }
 }
